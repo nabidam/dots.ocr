@@ -11,7 +11,7 @@ from dots_ocr.utils.image_utils import get_image_by_fitz_doc, fetch_image, smart
 from dots_ocr.utils.doc_utils import fitz_doc_to_image, load_images_from_pdf
 from dots_ocr.utils.prompts import dict_promptmode_to_prompt
 from dots_ocr.utils.layout_utils import post_process_output, draw_layout_on_image, pre_process_bboxes
-from dots_ocr.utils.format_transformer import layoutjson2md
+from dots_ocr.utils.format_transformer import fillLayoutJsonPictures, layoutjson2md
 
 
 class DotsOCRParser:
@@ -184,6 +184,10 @@ class DotsOCRParser:
                 min_pixels=min_pixels, 
                 max_pixels=max_pixels,
                 )
+
+            # fill picture cells with their base64
+            cells = fillLayoutJsonPictures(origin_image, cells, text_key='text')
+            
             if filtered and prompt_mode != 'prompt_layout_only_en':  # model output json failed, use filtered process
                 json_file_path = os.path.join(save_dir, f"{save_name}.json")
                 with open(json_file_path, 'w', encoding="utf-8") as w:

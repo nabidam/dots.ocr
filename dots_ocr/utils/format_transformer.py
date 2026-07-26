@@ -180,6 +180,30 @@ def layoutjson2md(image: Image.Image, cells: list, text_key: str = 'text', no_pa
     return markdown_text
 
 
+def fillLayoutJsonPictures(
+    image: Image.Image, cells: list, text_key: str = "text"
+) -> list:
+    """
+    Fills Picture cells base64 value in a layout JSON format.
+    """
+
+    filled_cells = []
+
+    for i, cell in enumerate(cells):
+        x1, y1, x2, y2 = [int(coord) for coord in cell["bbox"]]
+        text = cell.get(text_key, "")
+
+        if cell["category"] == "Picture":
+            image_crop = image.crop((x1, y1, x2, y2))
+            image_base64 = PILimage_to_base64(image_crop)
+            picture_cell = {**cell, text_key: image_base64}
+            filled_cells.append(picture_cell)
+        else:
+            filled_cells.append(cell)
+
+    return filled_cells
+
+
 def fix_streamlit_formulas(md: str) -> str:
     """
     Fixes the format of formulas in Markdown to ensure they display correctly in Streamlit.
