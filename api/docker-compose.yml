@@ -1,0 +1,18 @@
+services:
+  dots-ocr-api:
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    container_name: dots-ocr-api
+    environment:
+      VLLM_HOST: ${VLLM_HOST:-host.docker.internal}
+      VLLM_PORT: ${VLLM_PORT:-8000}
+      VLLM_MODEL_NAME: ${VLLM_MODEL_NAME:-model}
+      VLLM_API_KEY: ${VLLM_API_KEY:-0}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - ./logs:/app/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

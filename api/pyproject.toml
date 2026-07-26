@@ -1,0 +1,21 @@
+[project]
+name = "dots-ocr-api"
+version = "0.1.0"
+description = "Small FastAPI service for dots.ocr image and PDF OCR"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "openai>=1.5",
+    "pillow>=10.0",
+    "pymupdf>=1.24",
+    "numpy>=1.26",
+    "python-dotenv>=1.0",
+    "python-multipart>=0.0.9",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+    "rich>=13.7",
+    "uvicorn[standard]>=0.30",
+]
+
+[tool.uv]
+package = false

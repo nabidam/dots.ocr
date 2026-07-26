@@ -1,0 +1,25 @@
+app:
+  name: dots-ocr-api
+  host: 0.0.0.0
+  port: 8080
+  log_level: INFO
+  max_upload_size_mb: 50
+  max_concurrent_inferences: 1
+
+vllm:
+  protocol: http
+  host: localhost
+  port: 8000
+  model_name: model
+
+ocr:
+  prompt_mode: prompt_layout_all_en
+  temperature: 0.1
+  top_p: 0.9
+  max_completion_tokens: 32768
+  pdf_dpi: 200
+
+logging:
+  file: logs/dots-ocr-api.log
+  max_bytes: 10485760
+  backup_count: 5
