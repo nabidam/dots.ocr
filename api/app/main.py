@@ -53,7 +53,7 @@ class OcrPageResponse(BaseModel):
         description="1-based page number in the original upload.",
     )
     image_base64: str = Field(
-        description="PNG bytes for this page, base64 encoded without a data-URL prefix.",
+        description="Browser-ready PNG data URL containing this page image.",
     )
     image_media_type: Literal["image/png"] = Field(
         description="Media type of image_base64. The API normalizes page images to PNG.",
@@ -79,7 +79,7 @@ class OcrResponse(BaseModel):
                         {
                             "page_number": 1,
                             "image_base64": (
-                                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+                                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
                                 "+A8AAQUBAScY42YAAAAASUVORK5CYII="
                             ),
                             "image_media_type": "image/png",
@@ -94,7 +94,7 @@ class OcrResponse(BaseModel):
                         {
                             "page_number": 2,
                             "image_base64": (
-                                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+                                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
                                 "+A8AAQUBAScY42YAAAAASUVORK5CYII="
                             ),
                             "image_media_type": "image/png",
@@ -236,8 +236,7 @@ async def health() -> HealthResponse:
         "  -F 'file=@demo/demo_image1.jpg'\n"
         "```\n\n"
         "The response contains one entry in `pages` per source page. "
-        "`image_base64` is raw base64 PNG data; prepend `data:image/png;base64,` "
-        "when a browser data URL is needed."
+        "`image_base64` is already a browser-ready `data:image/png;base64,...` URL."
     ),
     response_description="Per-page images and dots.ocr JSON results.",
     responses={

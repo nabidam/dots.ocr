@@ -56,7 +56,7 @@ The response contains one ordered entry per source page:
   "pages": [
     {
       "page_number": 1,
-      "image_base64": "...base64 encoded PNG...",
+      "image_base64": "data:image/png;base64,...",
       "image_media_type": "image/png",
       "ocr_result": [
         {
@@ -70,7 +70,9 @@ The response contains one ordered entry per source page:
 }
 ```
 
-`image_base64` is raw base64 PNG data without a data-URL prefix. For browser use, prepend `data:image/png;base64,`.
+`image_base64` is already a browser-ready `data:image/png;base64,...` data URL and can be assigned directly to an image `src` attribute.
+
+For structured layout results, `Picture` cells are post-processed with dots.ocr's `fillLayoutJsonPictures` helper. Their `text` value contains a cropped, browser-ready PNG data URL for that picture.
 
 The default prompt is `prompt_layout_all_en`, which asks dots.ocr for structured layout/OCR JSON. If the model returns valid JSON, `ocr_result` is a JSON object or array. If it returns invalid JSON, the raw model text is preserved as a string.
 

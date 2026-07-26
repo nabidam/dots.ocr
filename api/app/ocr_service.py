@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import io
 import json
 import logging
@@ -17,6 +16,8 @@ from PIL import Image, UnidentifiedImageError
 from dots_ocr.model.inference import inference_with_vllm
 from dots_ocr.utils import dict_promptmode_to_prompt
 from dots_ocr.utils.doc_utils import fitz_doc_to_image
+from dots_ocr.utils.format_transformer import fillLayoutJsonPictures
+from dots_ocr.utils.image_utils import PILimage_to_base64
 
 from app.config import Settings
 
@@ -96,13 +97,13 @@ def _decode_pages(data: bytes, content_type: str | None, filename: str, dpi: int
 
 
 def _image_to_base64(image: Image.Image) -> str:
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG", optimize=True)
-    return base64.b64encode(buffer.getvalue()).decode("ascii")
+    """Return a browser-ready PNG data URL."""
+
+    return PILimage_to_base64(image, format="PNG")
 
 
-def _parse_ocr_result(raw_result: str) -> Any:
-    """Parse JSON model output while preserving non-JSON output for diagnostics."""
+def _parse_ocr_result(raw_result: str, image: Image.Image) -> Any:
+    """Parse JSON and embed cropped Picture cells as ready-to-use data URLs."""
 
     if not isinstance(raw_result, str):
         return raw_result
@@ -113,10 +114,22 @@ def _parse_ocr_result(raw_result: str) -> Any:
         if candidate.lower().startswith("json"):
             candidate = candidate[4:].lstrip()
     try:
-        return json.loads(candidate)
+        parsed_result = json.loads(candidate)
     except json.JSONDecodeError:
         logger.warning("dots.ocr returned non-JSON output; returning it as a string")
         return raw_result
+
+    if not isinstance(parsed_result, list):
+        return parsed_result
+
+    try:
+        return fillLayoutJsonPictures(image, parsed_result, text_key="text")
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        logger.warning(
+            "Could not fill Picture cells in dots.ocr output; returning parsed JSON: %s",
+            exc,
+        )
+        return parsed_result
 
 
 class OcrService:
@@ -145,7 +158,7 @@ class OcrService:
                     "page_number": page.page_number,
                     "image_base64": _image_to_base64(page.image),
                     "image_media_type": "image/png",
-                    "ocr_result": _parse_ocr_result(raw_result),
+                    "ocr_result": _parse_ocr_result(raw_result, page.image),
                 }
             )
         return results
