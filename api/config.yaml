@@ -10,7 +10,7 @@ vllm:
   protocol: http
   host: localhost
   port: 8000
-  model_name: model
+  model_name: dots.mocr
 
 ocr:
   prompt_mode: prompt_layout_all_en
