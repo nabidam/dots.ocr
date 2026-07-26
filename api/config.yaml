@@ -1,7 +1,7 @@
 app:
   name: dots-ocr-api
   host: 0.0.0.0
-  port: 8080
+  port: 8088
   log_level: INFO
   max_upload_size_mb: 50
   max_concurrent_inferences: 1
