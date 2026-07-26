@@ -116,6 +116,14 @@ uv sync
 uv run python -m app.run
 ```
 
+The launcher automatically adds the repository root to Python's import path so the local `dots_ocr` engine package is available. If launching Uvicorn directly, run it from `api/`:
+
+```bash
+uv run uvicorn app.main:app
+```
+
+If `ModuleNotFoundError: No module named 'dots_ocr'` still appears, confirm that the current directory is `api/` and that this is the repository containing the `dots_ocr/` directory.
+
 The API expects vLLM to already be running. For local vLLM, set values such as:
 
 ```dotenv
