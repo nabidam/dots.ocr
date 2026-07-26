@@ -16,7 +16,7 @@ ocr:
   prompt_mode: prompt_layout_all_en
   temperature: 0.1
   top_p: 0.9
-  max_completion_tokens: 32768
+  max_completion_tokens: 16384
   pdf_dpi: 200
 
 logging:
