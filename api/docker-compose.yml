@@ -1,8 +1,8 @@
 services:
   dots-ocr-api:
     build:
-      context: ..
-      dockerfile: api/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     container_name: dots-ocr-api
     environment:
       VLLM_HOST: ${VLLM_HOST:-host.docker.internal}

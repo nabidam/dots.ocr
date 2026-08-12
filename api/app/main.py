@@ -13,8 +13,11 @@ from typing import Any, AsyncIterator, Literal
 # The API is intentionally kept under api/, while the engine package is at the
 # repository root. Make both `python -m app.run` and `uvicorn app.main:app`
 # work when launched from the api directory without requiring PYTHONPATH setup.
+API_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-if (REPOSITORY_ROOT / "dots_ocr").is_dir() and str(REPOSITORY_ROOT) not in sys.path:
+if (API_ROOT / "dots_ocr").is_dir() and str(API_ROOT) not in sys.path:
+    sys.path.insert(0, str(API_ROOT))
+elif (REPOSITORY_ROOT / "dots_ocr").is_dir() and str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from fastapi import FastAPI, File, Request, UploadFile

@@ -4,16 +4,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    PYTHONPATH=/workspace/dots.ocr
+    PYTHONPATH=/app
 
 WORKDIR /app
 
-COPY api/pyproject.toml /app/pyproject.toml
+COPY pyproject.toml /app/pyproject.toml
 RUN uv sync --no-dev
 
-COPY api/app /app/app
-COPY api/config.yaml /app/config.yaml
-COPY dots_ocr /workspace/dots.ocr/dots_ocr
+COPY app /app/app
+COPY config.yaml /app/config.yaml
+COPY dots_ocr /app/dots_ocr
 
 EXPOSE 8080
 
