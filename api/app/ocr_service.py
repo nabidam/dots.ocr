@@ -140,6 +140,15 @@ class OcrService:
         self._inference_slots = asyncio.Semaphore(
             settings.app.max_concurrent_inferences
         )
+        logger.info(
+            "Initializing OcrService with vLLM target: %s://%s:%s/v1 | Model: '%s' | API Key: '%s' | Prompt Mode: '%s'",
+            settings.vllm.protocol,
+            settings.vllm.host,
+            settings.vllm.port,
+            settings.vllm.model_name,
+            "***" if settings.vllm.api_key and settings.vllm.api_key != "0" else settings.vllm.api_key,
+            settings.ocr.prompt_mode,
+        )
 
     async def process(self, data: bytes, content_type: str | None, filename: str) -> list[dict[str, Any]]:
         pages = _decode_pages(
@@ -181,13 +190,29 @@ class OcrService:
                     model_name=self.settings.vllm.model_name,
                 )
             except Exception as exc:
+                logger.error(
+                    "vLLM inference request failed for endpoint %s://%s:%s/v1 (model='%s'): %s",
+                    self.settings.vllm.protocol,
+                    self.settings.vllm.host,
+                    self.settings.vllm.port,
+                    self.settings.vllm.model_name,
+                    exc,
+                    exc_info=True,
+                )
                 raise OcrInferenceError(
-                    "dots.ocr inference failed; check the vLLM server and API configuration"
+                    f"dots.ocr inference failed on {self.settings.vllm.protocol}://{self.settings.vllm.host}:{self.settings.vllm.port} (model='{self.settings.vllm.model_name}'): {exc}"
                 ) from exc
 
         if result is None:
+            logger.error(
+                "vLLM server returned empty result for endpoint %s://%s:%s/v1 (model='%s')",
+                self.settings.vllm.protocol,
+                self.settings.vllm.host,
+                self.settings.vllm.port,
+                self.settings.vllm.model_name,
+            )
             raise OcrInferenceError(
-                "dots.ocr returned no result; check the vLLM server and API configuration"
+                f"dots.ocr returned no result from {self.settings.vllm.protocol}://{self.settings.vllm.host}:{self.settings.vllm.port} (model='{self.settings.vllm.model_name}')"
             )
         return result
 
