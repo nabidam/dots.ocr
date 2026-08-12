@@ -12,6 +12,9 @@ services:
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:
+      - ./app:/app/app:ro
+      - ./dots_ocr:/app/dots_ocr:ro
+      - ./config.yaml:/app/config.yaml:ro
       - ./logs:/app/logs
     extra_hosts:
       - "host.docker.internal:host-gateway"

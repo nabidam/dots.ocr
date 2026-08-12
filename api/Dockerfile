@@ -11,10 +11,6 @@ WORKDIR /app
 COPY pyproject.toml /app/pyproject.toml
 RUN uv sync --no-dev
 
-COPY app /app/app
-COPY config.yaml /app/config.yaml
-COPY dots_ocr /app/dots_ocr
-
 EXPOSE 8080
 
 CMD ["uv", "run", "--no-sync", "python", "-m", "app.run"]

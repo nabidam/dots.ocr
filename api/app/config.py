@@ -89,7 +89,7 @@ class Settings(BaseModel):
 
 def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.is_file():
-        raise FileNotFoundError(f"Configuration file does not exist: {path}")
+        return {}
     with path.open("r", encoding="utf-8") as config_file:
         parsed = yaml.safe_load(config_file) or {}
     if not isinstance(parsed, dict):
