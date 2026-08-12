@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # 1. vLLM Model Server Service
   vllm:
     image: vllm/vllm-openai:v0.13.0
     container_name: vllm-server
@@ -12,8 +11,10 @@ services:
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
     volumes:
+      # HuggingFace cache directory for downloaded models
       - ~/.cache/huggingface:/root/.cache/huggingface
-      - ./docker-vllm/models:/workspace/weights
+      # Optional local weights directory (mount local weights to /workspace/weights)
+      - ./models:/workspace/weights
     command: >
       serve ${MODEL_PATH:-rednote-hilab/dots.mocr}
       --host 0.0.0.0
@@ -31,27 +32,3 @@ services:
               count: all
               capabilities: [gpu]
     ipc: host
-
-  # 2. dots-ocr-api Service
-  dots-ocr-api:
-    build:
-      context: ./dots-ocr-api
-      dockerfile: Dockerfile
-    container_name: dots-ocr-api
-    restart: unless-stopped
-    ports:
-      - "${API_PORT:-8080}:8080"
-    environment:
-      VLLM_HOST: vllm
-      VLLM_PORT: 8000
-      VLLM_MODEL_NAME: ${SERVED_MODEL_NAME:-model}
-      VLLM_API_KEY: ${VLLM_API_KEY:-0}
-      OCR_PROMPT_MODE: ${OCR_PROMPT_MODE:-prompt_layout_all_en}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    volumes:
-      - ./dots-ocr-api/app:/app/app:ro
-      - ./dots-ocr-api/dots_ocr:/app/dots_ocr:ro
-      - ./dots-ocr-api/config.yaml:/app/config.yaml:ro
-      - ./dots-ocr-api/logs:/app/logs
-    depends_on:
-      - vllm
