@@ -89,6 +89,7 @@ Important settings:
 | `LOG_LEVEL` | `app.log_level` | `INFO` | Console/file log level |
 | `MAX_UPLOAD_SIZE_MB` | `app.max_upload_size_mb` | `50` | Maximum upload size |
 | `MAX_CONCURRENT_INFERENCES` | `app.max_concurrent_inferences` | `1` | Inference concurrency limit |
+| `CORS_ORIGINS` | `app.cors_origins` | `["*"]` | Allowed CORS origins (comma-separated or list) |
 | `VLLM_PROTOCOL` | `vllm.protocol` | `http` | vLLM protocol |
 | `VLLM_HOST` | `vllm.host` | `localhost` | vLLM hostname |
 | `VLLM_PORT` | `vllm.port` | `8000` | vLLM custom port |

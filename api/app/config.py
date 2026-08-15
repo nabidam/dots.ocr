@@ -22,6 +22,27 @@ class AppConfig(BaseModel):
     log_level: str = "INFO"
     max_upload_size_mb: PositiveInt = 50
     max_concurrent_inferences: PositiveInt = 1
+    cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def validate_cors_origins(cls, value: Any) -> list[str]:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned.startswith("[") and cleaned.endswith("]"):
+                import json
+
+                try:
+                    parsed = json.loads(cleaned)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except Exception:
+                    pass
+            return [origin.strip() for origin in cleaned.split(",") if origin.strip()]
+        if isinstance(value, (list, tuple)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return ["*"]
+
 
 
 class VllmConfig(BaseModel):
@@ -110,6 +131,7 @@ def _apply_environment_overrides(config: dict[str, Any]) -> None:
         ("LOG_LEVEL", "app", "log_level", str),
         ("MAX_UPLOAD_SIZE_MB", "app", "max_upload_size_mb", int),
         ("MAX_CONCURRENT_INFERENCES", "app", "max_concurrent_inferences", int),
+        ("CORS_ORIGINS", "app", "cors_origins", str),
         ("VLLM_PROTOCOL", "vllm", "protocol", str),
         ("VLLM_HOST", "vllm", "host", str),
         ("VLLM_PORT", "vllm", "port", int),

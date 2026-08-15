@@ -21,6 +21,7 @@ elif (REPOSITORY_ROOT / "dots_ocr").is_dir() and str(REPOSITORY_ROOT) not in sys
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from fastapi import FastAPI, File, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -166,6 +167,16 @@ app = FastAPI(
     contact={"name": "dots.ocr API maintainers"},
     lifespan=lifespan,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.app.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
 
 
 @app.middleware("http")

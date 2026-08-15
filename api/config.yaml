@@ -5,6 +5,8 @@ app:
   log_level: INFO
   max_upload_size_mb: 50
   max_concurrent_inferences: 1
+  cors_origins:
+    - "*"
 
 vllm:
   protocol: http
