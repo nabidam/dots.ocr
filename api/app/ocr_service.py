@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections import deque
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -192,11 +193,31 @@ class OcrDocument:
         return self._source.total_pages
 
     async def pages(self) -> AsyncIterator[dict[str, Any]]:
-        """Yield one result per page, in source page order."""
+        """Yield one result per page, in source page order.
+
+        Up to `max_concurrent_inferences` pages are kept in flight so a backend
+        with spare capacity is not left idle, while results are still emitted in
+        page order so clients never have to reorder a stream.
+        """
 
         prompt = dict_promptmode_to_prompt[self._service.settings.ocr.prompt_mode]
-        for page_number in range(1, self.total_pages + 1):
-            yield await self._process_page(page_number, prompt)
+        window = self._service.settings.app.max_concurrent_inferences
+        in_flight: deque[asyncio.Task[dict[str, Any]]] = deque()
+        next_page = 1
+        try:
+            while in_flight or next_page <= self.total_pages:
+                while len(in_flight) < window and next_page <= self.total_pages:
+                    in_flight.append(
+                        asyncio.create_task(self._process_page(next_page, prompt))
+                    )
+                    next_page += 1
+                yield await in_flight.popleft()
+        finally:
+            # Reached on error and on early close, e.g. a disconnected client.
+            for task in in_flight:
+                task.cancel()
+            if in_flight:
+                await asyncio.gather(*in_flight, return_exceptions=True)
 
     async def _process_page(self, page_number: int, prompt: str) -> dict[str, Any]:
         image = await self._source.render(page_number)
