@@ -76,6 +76,32 @@ For structured layout results, `Picture` cells are post-processed with dots.ocr'
 
 The default prompt is `prompt_layout_all_en`, which asks dots.ocr for structured layout/OCR JSON. If the model returns valid JSON, `ocr_result` is a JSON object or array. If it returns invalid JSON, the raw model text is preserved as a string.
 
+## `POST /ocr/stream`
+
+Same input as `POST /ocr`, but results are streamed as newline delimited JSON (`application/x-ndjson`) so each page arrives as soon as it is finished. Time to first page no longer scales with document length.
+
+```bash
+curl -N -X POST http://localhost:8080/ocr/stream \
+  -F 'file=@../demo/demo_pdf1.pdf'
+```
+
+Each line is a complete JSON document:
+
+```
+{"type":"meta","filename":"invoice.pdf","total_pages":2}
+{"type":"page","page_number":1,"image_base64":"data:image/png;base64,...","image_media_type":"image/png","ocr_result":[]}
+{"type":"page","page_number":2,"image_base64":"data:image/png;base64,...","image_media_type":"image/png","ocr_result":[]}
+{"type":"done","completed_pages":2}
+```
+
+`page` lines carry the same fields as an entry in the `/ocr` `pages` array and arrive in source page order.
+
+Rejected uploads still fail with `400` before the stream starts. Once the first line is sent the status is committed to `200`, so a later failure is reported as a terminal `{"type":"error","detail":...,"request_id":...}` line instead. A stream that ends without a `done` or `error` line was truncated and should be treated as failed.
+
+Closing the connection stops the remaining pages from being processed.
+
+When running behind a reverse proxy, disable response buffering for this route (`proxy_buffering off;` in nginx); the response already sets `X-Accel-Buffering: no`.
+
 ## Configuration
 
 Defaults are in [`config.yaml`](config.yaml). Environment variables override YAML values. Copy [`.env.example`](.env.example) to `.env` for local secrets and overrides; `.env` is ignored by git.
@@ -159,7 +185,8 @@ Error responses include a `detail` message and, for application errors, a `reque
 
 ## Operational notes
 
-- PDF pages are rendered and processed sequentially so page order is deterministic.
+- PDF pages are rendered one at a time, on demand, and results are always emitted in source page order.
+- `MAX_CONCURRENT_INFERENCES` also sets how many pages of one document are processed in parallel; raise it only if the vLLM backend has spare capacity.
 - API responses can be large because every page image is returned as base64.
 - The API has no client authentication layer. Place it behind an authenticated gateway or add authentication before exposing it publicly.
 - `VLLM_API_KEY` is only used for the vLLM OpenAI-compatible client and is never written to logs.
