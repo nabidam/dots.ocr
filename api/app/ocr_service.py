@@ -169,6 +169,17 @@ def _parse_ocr_result(raw_result: str, image: Image.Image) -> Any:
         return parsed_result
 
 
+def _build_page_result(page_number: int, image: Image.Image, raw_result: str) -> dict[str, Any]:
+    """Assemble one page payload. CPU bound; call from a worker thread."""
+
+    return {
+        "page_number": page_number,
+        "image_base64": _image_to_base64(image),
+        "image_media_type": "image/png",
+        "ocr_result": _parse_ocr_result(raw_result, image),
+    }
+
+
 class OcrDocument:
     """An opened upload whose pages are rendered and OCR'd on demand."""
 
@@ -190,12 +201,9 @@ class OcrDocument:
     async def _process_page(self, page_number: int, prompt: str) -> dict[str, Any]:
         image = await self._source.render(page_number)
         raw_result = await self._service.infer_page(image, prompt)
-        return {
-            "page_number": page_number,
-            "image_base64": _image_to_base64(image),
-            "image_media_type": "image/png",
-            "ocr_result": _parse_ocr_result(raw_result, image),
-        }
+        # PNG encoding and Picture cropping are CPU bound and would otherwise
+        # block the event loop for every other request while a page is emitted.
+        return await asyncio.to_thread(_build_page_result, page_number, image, raw_result)
 
     def close(self) -> None:
         self._source.close()
