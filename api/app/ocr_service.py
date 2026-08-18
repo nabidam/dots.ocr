@@ -7,7 +7,8 @@ import io
 import json
 import logging
 import os
-from dataclasses import dataclass
+from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from typing import Any
 
 import fitz
@@ -32,15 +33,60 @@ class OcrInferenceError(RuntimeError):
     """Raised when the configured vLLM server cannot produce an OCR result."""
 
 
-@dataclass(frozen=True)
-class PageImage:
-    """An ordered page image ready for inference."""
+class PageSource(ABC):
+    """A decoded upload that renders one page at a time.
 
-    page_number: int
-    image: Image.Image
+    Rendering lazily matters for multi-page PDFs: a 50 page document rendered
+    eagerly costs a long CPU stall and holds every page bitmap in memory before
+    the first inference can start.
+    """
+
+    total_pages: int
+
+    @abstractmethod
+    async def render(self, page_number: int) -> Image.Image:
+        """Return the 1-based page as an RGB image."""
+
+    def close(self) -> None:
+        """Release decoder resources. Safe to call more than once."""
 
 
-def _load_image(data: bytes) -> Image.Image:
+class _ImagePageSource(PageSource):
+    """A single-page source backed by an already decoded image."""
+
+    total_pages = 1
+
+    def __init__(self, image: Image.Image) -> None:
+        self._image = image
+
+    async def render(self, page_number: int) -> Image.Image:
+        return self._image
+
+
+class _PdfPageSource(PageSource):
+    """A PDF rendered page by page at the configured DPI."""
+
+    def __init__(self, document: fitz.Document, dpi: int) -> None:
+        self._document = document
+        self._dpi = dpi
+        # MuPDF documents are not safe to use from several threads at once, so
+        # renders are serialized even when pages are processed concurrently.
+        self._render_lock = asyncio.Lock()
+        self.total_pages = document.page_count
+
+    async def render(self, page_number: int) -> Image.Image:
+        async with self._render_lock:
+            return await asyncio.to_thread(self._render_page, page_number)
+
+    def _render_page(self, page_number: int) -> Image.Image:
+        return fitz_doc_to_image(self._document[page_number - 1], target_dpi=self._dpi)
+
+    def close(self) -> None:
+        if not self._document.is_closed:
+            self._document.close()
+
+
+def _decode_image(data: bytes) -> Image.Image:
     try:
         with Image.open(io.BytesIO(data)) as opened_image:
             opened_image.verify()
@@ -50,37 +96,28 @@ def _load_image(data: bytes) -> Image.Image:
         raise DocumentInputError("The uploaded file is not a readable image") from exc
 
 
-def _load_pdf_pages(data: bytes, dpi: int) -> list[PageImage]:
+def _open_pdf(data: bytes, dpi: int) -> _PdfPageSource:
     try:
         document = fitz.open(stream=data, filetype="pdf")
     except (RuntimeError, ValueError) as exc:
         raise DocumentInputError("The uploaded file is not a readable PDF") from exc
 
-    pages: list[PageImage] = []
-    try:
-        for page_number, page in enumerate(document, start=1):
-            pages.append(
-                PageImage(
-                    page_number=page_number,
-                    image=fitz_doc_to_image(page, target_dpi=dpi),
-                )
-            )
-    finally:
+    if document.page_count < 1:
         document.close()
-
-    if not pages:
         raise DocumentInputError("The uploaded PDF does not contain any pages")
-    return pages
+    return _PdfPageSource(document, dpi)
 
 
-def _decode_pages(data: bytes, content_type: str | None, filename: str, dpi: int) -> list[PageImage]:
+async def _open_page_source(
+    data: bytes, content_type: str | None, filename: str, dpi: int
+) -> PageSource:
     if not data:
         raise DocumentInputError("The uploaded file is empty")
 
     lower_filename = filename.lower()
     is_pdf = content_type == "application/pdf" or lower_filename.endswith(".pdf") or data.startswith(b"%PDF-")
     if is_pdf:
-        return _load_pdf_pages(data, dpi)
+        return await asyncio.to_thread(_open_pdf, data, dpi)
 
     is_image = (content_type or "").startswith("image/") or lower_filename.rsplit(".", 1)[-1] in {
         "jpg",
@@ -93,7 +130,7 @@ def _decode_pages(data: bytes, content_type: str | None, filename: str, dpi: int
     }
     if not is_image:
         raise DocumentInputError("Only image files and PDFs are supported")
-    return [PageImage(page_number=1, image=_load_image(data))]
+    return _ImagePageSource(await asyncio.to_thread(_decode_image, data))
 
 
 def _image_to_base64(image: Image.Image) -> str:
@@ -132,6 +169,38 @@ def _parse_ocr_result(raw_result: str, image: Image.Image) -> Any:
         return parsed_result
 
 
+class OcrDocument:
+    """An opened upload whose pages are rendered and OCR'd on demand."""
+
+    def __init__(self, service: OcrService, source: PageSource) -> None:
+        self._service = service
+        self._source = source
+
+    @property
+    def total_pages(self) -> int:
+        return self._source.total_pages
+
+    async def pages(self) -> AsyncIterator[dict[str, Any]]:
+        """Yield one result per page, in source page order."""
+
+        prompt = dict_promptmode_to_prompt[self._service.settings.ocr.prompt_mode]
+        for page_number in range(1, self.total_pages + 1):
+            yield await self._process_page(page_number, prompt)
+
+    async def _process_page(self, page_number: int, prompt: str) -> dict[str, Any]:
+        image = await self._source.render(page_number)
+        raw_result = await self._service.infer_page(image, prompt)
+        return {
+            "page_number": page_number,
+            "image_base64": _image_to_base64(image),
+            "image_media_type": "image/png",
+            "ocr_result": _parse_ocr_result(raw_result, image),
+        }
+
+    def close(self) -> None:
+        self._source.close()
+
+
 class OcrService:
     """Coordinates document decoding and ordered calls to the vLLM-backed engine."""
 
@@ -150,29 +219,31 @@ class OcrService:
             settings.ocr.prompt_mode,
         )
 
-    async def process(self, data: bytes, content_type: str | None, filename: str) -> list[dict[str, Any]]:
-        pages = _decode_pages(
+    async def open_document(
+        self, data: bytes, content_type: str | None, filename: str
+    ) -> OcrDocument:
+        """Decode the upload far enough to know its page count.
+
+        Raises DocumentInputError before any result is produced, so callers can
+        still answer with a normal error response.
+        """
+
+        source = await _open_page_source(
             data,
             content_type,
             filename,
             dpi=self.settings.ocr.pdf_dpi,
         )
-        prompt = dict_promptmode_to_prompt[self.settings.ocr.prompt_mode]
-        results: list[dict[str, Any]] = []
+        return OcrDocument(self, source)
 
-        for page in pages:
-            raw_result = await self._infer_page(page.image, prompt)
-            results.append(
-                {
-                    "page_number": page.page_number,
-                    "image_base64": _image_to_base64(page.image),
-                    "image_media_type": "image/png",
-                    "ocr_result": _parse_ocr_result(raw_result, page.image),
-                }
-            )
-        return results
+    async def process(self, data: bytes, content_type: str | None, filename: str) -> list[dict[str, Any]]:
+        document = await self.open_document(data, content_type, filename)
+        try:
+            return [page async for page in document.pages()]
+        finally:
+            document.close()
 
-    async def _infer_page(self, image: Image.Image, prompt: str) -> str:
+    async def infer_page(self, image: Image.Image, prompt: str) -> str:
         async with self._inference_slots:
             try:
                 # dots_ocr.model.inference reads the OpenAI key from API_KEY.
@@ -219,6 +290,7 @@ class OcrService:
 
 __all__ = [
     "DocumentInputError",
+    "OcrDocument",
     "OcrInferenceError",
     "OcrService",
 ]
