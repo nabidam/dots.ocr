@@ -111,6 +111,8 @@ Rejected uploads still fail with `400` before the stream starts. Once the first 
 
 Closing the connection stops the remaining pages from being processed.
 
+Ready-to-use clients for curl, fetch, axios, PHP cURL, Python, and Go, plus the rules a streaming client must follow, are in [`docs/ocr-stream-clients.md`](docs/ocr-stream-clients.md).
+
 When running behind a reverse proxy, disable response buffering for this route (`proxy_buffering off;` in nginx); the response already sets `X-Accel-Buffering: no`.
 
 ## Configuration
