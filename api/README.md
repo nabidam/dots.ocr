@@ -72,7 +72,16 @@ The response contains one ordered entry per source page:
 
 `image_base64` is already a browser-ready `data:image/png;base64,...` data URL and can be assigned directly to an image `src` attribute.
 
+### Response image size
+
 Page images dominate the response size for multi-page documents. A client that already has the source document can request `?include_images=false` on `/ocr` and `/ocr/stream`; `image_base64` and `image_media_type` are then `null` and only the OCR JSON is returned. Images are included by default.
+
+The encoding of the returned image is configurable and independent of `PDF_DPI`, which still controls the render that dots.ocr sees:
+
+- `OCR_IMAGE_FORMAT=webp` (or `jpeg`) with `OCR_IMAGE_QUALITY` replaces PNG, typically 5-10x smaller.
+- `OCR_IMAGE_MAX_DIMENSION=1600` caps the longest side of the returned image.
+
+Defaults are unchanged: full resolution PNG. Every page result also reports `image_width`/`image_height` for the returned image and `source_width`/`source_height` for the render that `ocr_result` coordinates refer to, so bounding boxes can be scaled when the returned image is downscaled. `Picture` crops are always taken from the full resolution page.
 
 For structured layout results, `Picture` cells are post-processed with dots.ocr's `fillLayoutJsonPictures` helper. Their `text` value contains a cropped, browser-ready PNG data URL for that picture.
 
@@ -128,6 +137,9 @@ Important settings:
 | `OCR_TOP_P` | `ocr.top_p` | `0.9` | Nucleus sampling value |
 | `OCR_MAX_COMPLETION_TOKENS` | `ocr.max_completion_tokens` | `32768` | Maximum model output tokens |
 | `PDF_DPI` | `ocr.pdf_dpi` | `200` | PDF page rendering DPI |
+| `OCR_IMAGE_FORMAT` | `ocr.image_format` | `png` | Response image encoding: `png`, `webp`, or `jpeg` |
+| `OCR_IMAGE_QUALITY` | `ocr.image_quality` | `85` | Encoder quality for `webp` and `jpeg` |
+| `OCR_IMAGE_MAX_DIMENSION` | `ocr.image_max_dimension` | unset | Longest side, in pixels, of the returned page image |
 | `LOG_FILE` | `logging.file` | `logs/dots-ocr-api.log` | Rotating log path |
 | `LOG_MAX_BYTES` | `logging.max_bytes` | `10485760` | Maximum size per log file |
 | `LOG_BACKUP_COUNT` | `logging.backup_count` | `5` | Number of rotated log files |

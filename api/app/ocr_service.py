@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import io
 import json
 import logging
 import os
 from abc import ABC, abstractmethod
 from collections import deque
+from dataclasses import dataclass
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -19,7 +21,6 @@ from dots_ocr.model.inference import inference_with_vllm
 from dots_ocr.utils import dict_promptmode_to_prompt
 from dots_ocr.utils.doc_utils import fitz_doc_to_image
 from dots_ocr.utils.format_transformer import fillLayoutJsonPictures
-from dots_ocr.utils.image_utils import PILimage_to_base64
 
 from app.config import Settings
 
@@ -134,10 +135,62 @@ async def _open_page_source(
     return _ImagePageSource(await asyncio.to_thread(_decode_image, data))
 
 
-def _image_to_base64(image: Image.Image) -> str:
-    """Return a browser-ready PNG data URL."""
+@dataclass(frozen=True)
+class ImageOutputOptions:
+    """How rendered pages are encoded for the response.
 
-    return PILimage_to_base64(image, format="PNG")
+    This only affects what the client receives. Inference always runs on the
+    full resolution render, and layout coordinates stay in that space.
+    """
+
+    image_format: str = "png"
+    quality: int = 85
+    max_dimension: int | None = None
+
+    @property
+    def media_type(self) -> str:
+        return f"image/{self.image_format}"
+
+    @property
+    def pil_format(self) -> str:
+        return self.image_format.upper()
+
+
+@dataclass(frozen=True)
+class EncodedImage:
+    """A page image encoded as a browser-ready data URL."""
+
+    data_url: str
+    media_type: str
+    width: int
+    height: int
+
+
+def _encode_page_image(image: Image.Image, options: ImageOutputOptions) -> EncodedImage:
+    """Return the page image as a data URL, downscaled when configured."""
+
+    prepared = image
+    if options.max_dimension and max(image.size) > options.max_dimension:
+        prepared = image.copy()
+        prepared.thumbnail(
+            (options.max_dimension, options.max_dimension), Image.LANCZOS
+        )
+
+    save_options: dict[str, Any] = {}
+    if options.pil_format in {"WEBP", "JPEG"}:
+        save_options["quality"] = options.quality
+    if options.pil_format == "JPEG":
+        save_options["optimize"] = True
+
+    buffer = io.BytesIO()
+    prepared.save(buffer, format=options.pil_format, **save_options)
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return EncodedImage(
+        data_url=f"data:{options.media_type};base64,{encoded}",
+        media_type=options.media_type,
+        width=prepared.width,
+        height=prepared.height,
+    )
 
 
 def _parse_ocr_result(raw_result: str, image: Image.Image) -> Any:
@@ -171,15 +224,27 @@ def _parse_ocr_result(raw_result: str, image: Image.Image) -> Any:
 
 
 def _build_page_result(
-    page_number: int, image: Image.Image, raw_result: str, include_image: bool
+    page_number: int,
+    image: Image.Image,
+    raw_result: str,
+    include_image: bool,
+    options: ImageOutputOptions,
 ) -> dict[str, Any]:
     """Assemble one page payload. CPU bound; call from a worker thread."""
 
+    # Cropping runs against the full resolution page, so Picture cells stay
+    # sharp even when the returned page image is downscaled.
+    ocr_result = _parse_ocr_result(raw_result, image)
+    encoded = _encode_page_image(image, options) if include_image else None
     return {
         "page_number": page_number,
-        "image_base64": _image_to_base64(image) if include_image else None,
-        "image_media_type": "image/png" if include_image else None,
-        "ocr_result": _parse_ocr_result(raw_result, image),
+        "image_base64": encoded.data_url if encoded else None,
+        "image_media_type": encoded.media_type if encoded else None,
+        "image_width": encoded.width if encoded else None,
+        "image_height": encoded.height if encoded else None,
+        "source_width": image.width,
+        "source_height": image.height,
+        "ocr_result": ocr_result,
     }
 
 
@@ -234,7 +299,12 @@ class OcrDocument:
         # PNG encoding and Picture cropping are CPU bound and would otherwise
         # block the event loop for every other request while a page is emitted.
         return await asyncio.to_thread(
-            _build_page_result, page_number, image, raw_result, include_image
+            _build_page_result,
+            page_number,
+            image,
+            raw_result,
+            include_image,
+            self._service.image_options,
         )
 
     def close(self) -> None:
@@ -248,6 +318,11 @@ class OcrService:
         self.settings = settings
         self._inference_slots = asyncio.Semaphore(
             settings.app.max_concurrent_inferences
+        )
+        self.image_options = ImageOutputOptions(
+            image_format=settings.ocr.image_format,
+            quality=settings.ocr.image_quality,
+            max_dimension=settings.ocr.image_max_dimension,
         )
         logger.info(
             "Initializing OcrService with vLLM target: %s://%s:%s/v1 | Model: '%s' | API Key: '%s' | Prompt Mode: '%s'",
@@ -336,6 +411,7 @@ class OcrService:
 
 __all__ = [
     "DocumentInputError",
+    "ImageOutputOptions",
     "OcrDocument",
     "OcrInferenceError",
     "OcrService",

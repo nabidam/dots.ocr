@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
@@ -63,6 +63,10 @@ class OcrConfig(BaseModel):
     top_p: float = Field(default=0.9, gt=0, le=1)
     max_completion_tokens: PositiveInt = 32768
     pdf_dpi: PositiveInt = 200
+    # Output encoding only. Inference always sees the full resolution render.
+    image_format: Literal["png", "webp", "jpeg"] = "png"
+    image_quality: int = Field(default=85, ge=1, le=100)
+    image_max_dimension: PositiveInt | None = None
 
     @field_validator("prompt_mode")
     @classmethod
@@ -141,6 +145,9 @@ def _apply_environment_overrides(config: dict[str, Any]) -> None:
         ("OCR_TOP_P", "ocr", "top_p", float),
         ("OCR_MAX_COMPLETION_TOKENS", "ocr", "max_completion_tokens", int),
         ("PDF_DPI", "ocr", "pdf_dpi", int),
+        ("OCR_IMAGE_FORMAT", "ocr", "image_format", str),
+        ("OCR_IMAGE_QUALITY", "ocr", "image_quality", int),
+        ("OCR_IMAGE_MAX_DIMENSION", "ocr", "image_max_dimension", int),
         ("LOG_FILE", "logging", "file", str),
         ("LOG_MAX_BYTES", "logging", "max_bytes", int),
         ("LOG_BACKUP_COUNT", "logging", "backup_count", int),

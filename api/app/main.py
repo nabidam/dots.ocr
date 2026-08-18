@@ -66,12 +66,35 @@ class OcrPageResponse(BaseModel):
             "the request was made with include_images=false."
         ),
     )
-    image_media_type: Literal["image/png"] | None = Field(
+    image_media_type: str | None = Field(
         default=None,
         description=(
-            "Media type of image_base64. The API normalizes page images to PNG. "
-            "Null when the page image was not requested."
+            "Media type of image_base64, one of image/png, image/webp, or "
+            "image/jpeg depending on `ocr.image_format`. Null when the page "
+            "image was not requested."
         ),
+    )
+    image_width: int | None = Field(
+        default=None,
+        ge=1,
+        description="Width of image_base64 in pixels. Null when no image was returned.",
+    )
+    image_height: int | None = Field(
+        default=None,
+        ge=1,
+        description="Height of image_base64 in pixels. Null when no image was returned.",
+    )
+    source_width: int = Field(
+        ge=1,
+        description=(
+            "Width of the rendered page that ocr_result coordinates refer to. "
+            "Differs from image_width when `ocr.image_max_dimension` downscales "
+            "the returned image."
+        ),
+    )
+    source_height: int = Field(
+        ge=1,
+        description="Height of the rendered page that ocr_result coordinates refer to.",
     )
     ocr_result: Any = Field(
         description=(
@@ -98,6 +121,10 @@ class OcrResponse(BaseModel):
                                 "+A8AAQUBAScY42YAAAAASUVORK5CYII="
                             ),
                             "image_media_type": "image/png",
+                            "image_width": 1654,
+                            "image_height": 2339,
+                            "source_width": 1654,
+                            "source_height": 2339,
                             "ocr_result": [
                                 {
                                     "bbox": [72, 72, 540, 120],
@@ -113,6 +140,10 @@ class OcrResponse(BaseModel):
                                 "+A8AAQUBAScY42YAAAAASUVORK5CYII="
                             ),
                             "image_media_type": "image/png",
+                            "image_width": 1654,
+                            "image_height": 2339,
+                            "source_width": 1654,
+                            "source_height": 2339,
                             "ocr_result": [
                                 {
                                     "bbox": [72, 72, 540, 120],
@@ -434,9 +465,9 @@ async def process_ocr(
                     "example": (
                         '{"type":"meta","filename":"invoice.pdf","total_pages":2}\n'
                         '{"type":"page","page_number":1,"image_base64":"data:image/png;base64,...",'
-                        '"image_media_type":"image/png","ocr_result":[]}\n'
+                        '"image_media_type":"image/png","image_width":1654,"image_height":2339,"source_width":1654,"source_height":2339,"ocr_result":[]}\n'
                         '{"type":"page","page_number":2,"image_base64":"data:image/png;base64,...",'
-                        '"image_media_type":"image/png","ocr_result":[]}\n'
+                        '"image_media_type":"image/png","image_width":1654,"image_height":2339,"source_width":1654,"source_height":2339,"ocr_result":[]}\n'
                         '{"type":"done","completed_pages":2}\n'
                     ),
                 }

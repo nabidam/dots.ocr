@@ -20,6 +20,10 @@ ocr:
   top_p: 0.9
   max_completion_tokens: 16384
   pdf_dpi: 200
+  # Response image encoding only; inference always uses the full render.
+  image_format: png
+  image_quality: 85
+  image_max_dimension: null
 
 logging:
   file: logs/dots-ocr-api.log
