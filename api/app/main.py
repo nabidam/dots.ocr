@@ -21,7 +21,7 @@ if (API_ROOT / "dots_ocr").is_dir() and str(API_ROOT) not in sys.path:
 elif (REPOSITORY_ROOT / "dots_ocr").is_dir() and str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -59,11 +59,19 @@ class OcrPageResponse(BaseModel):
         ge=1,
         description="1-based page number in the original upload.",
     )
-    image_base64: str = Field(
-        description="Browser-ready PNG data URL containing this page image.",
+    image_base64: str | None = Field(
+        default=None,
+        description=(
+            "Browser-ready PNG data URL containing this page image, or null when "
+            "the request was made with include_images=false."
+        ),
     )
-    image_media_type: Literal["image/png"] = Field(
-        description="Media type of image_base64. The API normalizes page images to PNG.",
+    image_media_type: Literal["image/png"] | None = Field(
+        default=None,
+        description=(
+            "Media type of image_base64. The API normalizes page images to PNG. "
+            "Null when the page image was not requested."
+        ),
     )
     ocr_result: Any = Field(
         description=(
@@ -272,6 +280,16 @@ async def health() -> HealthResponse:
     return HealthResponse(status="ok", service=settings.app.name)
 
 
+INCLUDE_IMAGES_QUERY = Query(
+    default=True,
+    description=(
+        "Return the rendered page image for every page. Set to false when the "
+        "client already has the source document; page images dominate the "
+        "response size for multi-page uploads."
+    ),
+)
+
+
 async def _read_upload(request: Request, file: UploadFile) -> tuple[str, bytes]:
     """Read the upload and enforce the configured size limit."""
 
@@ -362,11 +380,14 @@ async def process_ocr(
         ...,
         description="One image or PDF to process. Maximum size is configured by `max_upload_size_mb`.",
     ),
+    include_images: bool = INCLUDE_IMAGES_QUERY,
 ) -> OcrResponse:
     """OCR one image or PDF and return one base64 image/result pair per page."""
 
     filename, data = await _read_upload(request, file)
-    pages = await request.app.state.ocr_service.process(data, file.content_type, filename)
+    pages = await request.app.state.ocr_service.process(
+        data, file.content_type, filename, include_images
+    )
     logger.info(
         "Completed OCR request_id=%s filename=%s pages=%s",
         request.state.request_id,
@@ -441,6 +462,7 @@ async def process_ocr_stream(
         ...,
         description="One image or PDF to process. Maximum size is configured by `max_upload_size_mb`.",
     ),
+    include_images: bool = INCLUDE_IMAGES_QUERY,
 ) -> StreamingResponse:
     """Stream one NDJSON line per page as soon as that page is finished."""
 
@@ -458,7 +480,7 @@ async def process_ocr_stream(
             yield _ndjson_line(
                 OcrStreamMeta(filename=filename, total_pages=document.total_pages).model_dump()
             )
-            async for page in document.pages():
+            async for page in document.pages(include_images):
                 if await request.is_disconnected():
                     logger.info(
                         "Client disconnected request_id=%s filename=%s after_pages=%s",

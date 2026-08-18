@@ -170,13 +170,15 @@ def _parse_ocr_result(raw_result: str, image: Image.Image) -> Any:
         return parsed_result
 
 
-def _build_page_result(page_number: int, image: Image.Image, raw_result: str) -> dict[str, Any]:
+def _build_page_result(
+    page_number: int, image: Image.Image, raw_result: str, include_image: bool
+) -> dict[str, Any]:
     """Assemble one page payload. CPU bound; call from a worker thread."""
 
     return {
         "page_number": page_number,
-        "image_base64": _image_to_base64(image),
-        "image_media_type": "image/png",
+        "image_base64": _image_to_base64(image) if include_image else None,
+        "image_media_type": "image/png" if include_image else None,
         "ocr_result": _parse_ocr_result(raw_result, image),
     }
 
@@ -192,12 +194,15 @@ class OcrDocument:
     def total_pages(self) -> int:
         return self._source.total_pages
 
-    async def pages(self) -> AsyncIterator[dict[str, Any]]:
+    async def pages(self, include_images: bool = True) -> AsyncIterator[dict[str, Any]]:
         """Yield one result per page, in source page order.
 
         Up to `max_concurrent_inferences` pages are kept in flight so a backend
         with spare capacity is not left idle, while results are still emitted in
         page order so clients never have to reorder a stream.
+
+        Set `include_images` to False to omit the rendered page images, which
+        dominate the payload size for multi-page documents.
         """
 
         prompt = dict_promptmode_to_prompt[self._service.settings.ocr.prompt_mode]
@@ -208,7 +213,9 @@ class OcrDocument:
             while in_flight or next_page <= self.total_pages:
                 while len(in_flight) < window and next_page <= self.total_pages:
                     in_flight.append(
-                        asyncio.create_task(self._process_page(next_page, prompt))
+                        asyncio.create_task(
+                            self._process_page(next_page, prompt, include_images)
+                        )
                     )
                     next_page += 1
                 yield await in_flight.popleft()
@@ -219,12 +226,16 @@ class OcrDocument:
             if in_flight:
                 await asyncio.gather(*in_flight, return_exceptions=True)
 
-    async def _process_page(self, page_number: int, prompt: str) -> dict[str, Any]:
+    async def _process_page(
+        self, page_number: int, prompt: str, include_image: bool
+    ) -> dict[str, Any]:
         image = await self._source.render(page_number)
         raw_result = await self._service.infer_page(image, prompt)
         # PNG encoding and Picture cropping are CPU bound and would otherwise
         # block the event loop for every other request while a page is emitted.
-        return await asyncio.to_thread(_build_page_result, page_number, image, raw_result)
+        return await asyncio.to_thread(
+            _build_page_result, page_number, image, raw_result, include_image
+        )
 
     def close(self) -> None:
         self._source.close()
@@ -265,10 +276,16 @@ class OcrService:
         )
         return OcrDocument(self, source)
 
-    async def process(self, data: bytes, content_type: str | None, filename: str) -> list[dict[str, Any]]:
+    async def process(
+        self,
+        data: bytes,
+        content_type: str | None,
+        filename: str,
+        include_images: bool = True,
+    ) -> list[dict[str, Any]]:
         document = await self.open_document(data, content_type, filename)
         try:
-            return [page async for page in document.pages()]
+            return [page async for page in document.pages(include_images)]
         finally:
             document.close()
 

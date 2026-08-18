@@ -72,6 +72,8 @@ The response contains one ordered entry per source page:
 
 `image_base64` is already a browser-ready `data:image/png;base64,...` data URL and can be assigned directly to an image `src` attribute.
 
+Page images dominate the response size for multi-page documents. A client that already has the source document can request `?include_images=false` on `/ocr` and `/ocr/stream`; `image_base64` and `image_media_type` are then `null` and only the OCR JSON is returned. Images are included by default.
+
 For structured layout results, `Picture` cells are post-processed with dots.ocr's `fillLayoutJsonPictures` helper. Their `text` value contains a cropped, browser-ready PNG data URL for that picture.
 
 The default prompt is `prompt_layout_all_en`, which asks dots.ocr for structured layout/OCR JSON. If the model returns valid JSON, `ocr_result` is a JSON object or array. If it returns invalid JSON, the raw model text is preserved as a string.
